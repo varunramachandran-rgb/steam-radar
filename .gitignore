@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+
+steam_radar.sqlite
+*.sqlite
+
+.env
+.DS_Store
+Thumbs.db
