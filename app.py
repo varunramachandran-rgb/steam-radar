@@ -756,35 +756,45 @@ if display_df is not None and mode_label is not None and run_date is not None:
         column_config={"Store": st.column_config.LinkColumn("Store page")},
         hide_index=True,
     )
+# -----------------------------------------------------------------------------
+# Debug (collapsed by default): why filtered + exceptions log + full traces
+# -----------------------------------------------------------------------------
+st.divider()
 
+with st.expander("Debug", expanded=False):
+    # Why items were filtered
     if dbg:
-        with st.expander("Why items were filtered (debug)"):
-            st.write(dbg)
+        st.markdown("**Why items were filtered (debug)**")
+        st.json(dbg)
+    else:
+        st.caption("No debug data available.")
 
-# -----------------------------------------------------------------------------
-# Exceptions log (always at bottom)
-# -----------------------------------------------------------------------------
-exceptions = st.session_state.get("last_exceptions", []) or []
-if exceptions:
-    st.divider()
-    st.subheader("Exceptions log")
+    st.markdown("---")
 
-    # compact table
-    ex_df = pd.DataFrame(
-        [
-            {
-                "Time": e.get("ts"),
-                "Stage": e.get("stage"),
-                "Country": e.get("country"),
-                "AppID": e.get("appid"),
-                "Error": e.get("error"),
-            }
-            for e in exceptions
-        ]
-    )
-    st.dataframe(ex_df, use_container_width=True, hide_index=True)
+    # Exceptions
+    exceptions = st.session_state.get("last_exceptions", []) or []
+    if exceptions:
+        st.markdown("**Exceptions log**")
 
-    with st.expander("Full exception traces"):
-        for i, e in enumerate(exceptions, start=1):
-            st.markdown(f"**#{i} | {e.get('ts')} | {e.get('stage')} | {e.get('country')} | AppID={e.get('appid')}**")
-            st.code(e.get("trace", ""), language="text")
+        ex_df = pd.DataFrame(
+            [
+                {
+                    "Time": e.get("ts"),
+                    "Stage": e.get("stage"),
+                    "Country": e.get("country"),
+                    "AppID": e.get("appid"),
+                    "Error": e.get("error"),
+                }
+                for e in exceptions
+            ]
+        )
+        st.dataframe(ex_df, use_container_width=True, hide_index=True)
+
+        with st.expander("Full exception traces", expanded=False):
+            for i, e in enumerate(exceptions, start=1):
+                st.markdown(
+                    f"**#{i} | {e.get('ts')} | {e.get('stage')} | {e.get('country')} | AppID={e.get('appid')}**"
+                )
+                st.code(e.get("trace", ""), language="text")
+    else:
+        st.caption("No exceptions recorded.")
