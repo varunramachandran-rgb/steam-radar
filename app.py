@@ -161,6 +161,8 @@ if "last_dbg" not in st.session_state:
     st.session_state["last_dbg"] = None
 if "last_exceptions" not in st.session_state:
     st.session_state["last_exceptions"] = []
+if "has_run_scan" not in st.session_state:
+    st.session_state["has_run_scan"] = False
 
 
 def _apply_country_tier():
@@ -361,6 +363,7 @@ with st.sidebar:
 run = st.button("Run Scan", type="primary")
 
 if run:
+    st.session_state["has_run_scan"] = True
     # Reset exceptions for THIS run (keep history if you prefer; tell me)
     st.session_state["last_exceptions"] = []
 
@@ -759,42 +762,45 @@ if display_df is not None and mode_label is not None and run_date is not None:
 # -----------------------------------------------------------------------------
 # Debug (collapsed by default): why filtered + exceptions log + full traces
 # -----------------------------------------------------------------------------
-st.divider()
 
-with st.expander("Debug", expanded=False):
-    # Why items were filtered
-    if dbg:
-        st.markdown("**Why items were filtered (debug)**")
-        st.json(dbg)
-    else:
-        st.caption("No debug data available.")
+# Only show Debug section after at least one scan
+if st.session_state.get("has_run_scan", False):
+    st.divider()  # divider between results table and Debug dropdown
 
-    st.markdown("---")
+    with st.expander("Debug", expanded=False):
+        # Why items were filtered
+        if dbg:
+            st.markdown("**Why items were filtered (debug)**")
+            st.json(dbg)
+        else:
+            st.caption("No debug data available.")
 
-    # Exceptions
-    exceptions = st.session_state.get("last_exceptions", []) or []
-    if exceptions:
-        st.markdown("**Exceptions log**")
+        st.markdown("---")
 
-        ex_df = pd.DataFrame(
-            [
-                {
-                    "Time": e.get("ts"),
-                    "Stage": e.get("stage"),
-                    "Country": e.get("country"),
-                    "AppID": e.get("appid"),
-                    "Error": e.get("error"),
-                }
-                for e in exceptions
-            ]
-        )
-        st.dataframe(ex_df, use_container_width=True, hide_index=True)
+        # Exceptions
+        exceptions = st.session_state.get("last_exceptions", []) or []
+        if exceptions:
+            st.markdown("**Exceptions log**")
 
-        with st.expander("Full exception traces", expanded=False):
-            for i, e in enumerate(exceptions, start=1):
-                st.markdown(
-                    f"**#{i} | {e.get('ts')} | {e.get('stage')} | {e.get('country')} | AppID={e.get('appid')}**"
-                )
-                st.code(e.get("trace", ""), language="text")
-    else:
-        st.caption("No exceptions recorded.")
+            ex_df = pd.DataFrame(
+                [
+                    {
+                        "Time": e.get("ts"),
+                        "Stage": e.get("stage"),
+                        "Country": e.get("country"),
+                        "AppID": e.get("appid"),
+                        "Error": e.get("error"),
+                    }
+                    for e in exceptions
+                ]
+            )
+            st.dataframe(ex_df, use_container_width=True, hide_index=True)
+
+            with st.expander("Full exception traces", expanded=False):
+                for i, e in enumerate(exceptions, start=1):
+                    st.markdown(
+                        f"**#{i} | {e.get('ts')} | {e.get('stage')} | {e.get('country')} | AppID={e.get('appid')}**"
+                    )
+                    st.code(e.get("trace", ""), language="text")
+        else:
+            st.caption("No exceptions recorded.")
