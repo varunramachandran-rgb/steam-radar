@@ -87,31 +87,103 @@ def _get(url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 20, m
 # -----------------------------
 def fetch_global_tags(storage, cc: str) -> List[Dict[str, Any]]:
     """
-    Returns list of {name: str, count: int} in decreasing order.
-    Best-effort: parses Steam 'Global Tags' browse page.
+    Returns Steam Global Tags list as: [{"name": "...", "id": None}, ...]
+    - Ordered as Steam page order (typically most-used first).
+    - Resilient: caches results; falls back to cache or a static list if Steam blocks/changes markup.
     """
+    # Always treat tags as "US global tags" baseline for stability.
     cc = (cc or "US").upper()
-    key = f"global_tags::{cc}"
-    cached = _cache_get(storage, key)
-    if cached:
-        return cached.get("tags", [])
+    cache_key = f"steam_global_tags:{cc}"
 
-    r = _get(GLOBAL_TAGS_URL.format(cc=cc))
-    r.raise_for_status()
+    # --- Fallback list: common Steam tags (ordered roughly by prevalence) ---
+    FALLBACK_US_TAGS = [
+        "Action", "Adventure", "RPG", "Strategy", "Simulation", "Indie", "Casual",
+        "Singleplayer", "Multiplayer", "Co-op", "Online Co-Op",
+        "Open World", "Story Rich", "First-Person", "Third Person",
+        "Shooter", "FPS", "Tactical", "Stealth",
+        "Survival", "Crafting", "Sandbox", "Building",
+        "Horror", "Psychological Horror",
+        "Puzzle", "Platformer", "Metroidvania",
+        "Roguelike", "Roguelite",
+        "Turn-Based", "Turn-Based Strategy", "Real-Time Strategy",
+        "Card Game", "Deckbuilding",
+        "Sports", "Racing",
+        "JRPG", "ARPG",
+        "Visual Novel", "Dating Sim",
+        "Souls-like",
+        "Hack and Slash",
+        "City Builder", "Management",
+        "Tower Defense",
+        "Fighting",
+        "Massively Multiplayer", "MMORPG",
+        "Anime", "Pixel Graphics", "2D", "3D",
+        "VR", "Controller",
+        "Early Access", "Free to Play",
+    ]
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    def _normalize_tags(tag_names: List[str]) -> List[Dict[str, Any]]:
+        seen = set()
+        out: List[Dict[str, Any]] = []
+        for name in tag_names:
+            n = (name or "").strip()
+            if not n:
+                continue
+            k = n.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append({"name": n, "id": None})
+        return out
 
-    tags: List[Dict[str, Any]] = []
-    # The left list items are <a class="tag_browse_tag">Tag</a> but Steam may vary.
-    for a in soup.select("a.tag_browse_tag"):
-        name = a.get_text(strip=True)
-        if not name:
-            continue
-        tags.append({"name": name, "count": None})
+    # 1) Try cache first (fast + avoids Steam blocking)
+    try:
+        if storage is not None:
+            cached = storage.get_json(cache_key)
+            if isinstance(cached, dict) and isinstance(cached.get("tags"), list) and cached["tags"]:
+                # cached["tags"] is list[str]
+                return _normalize_tags([str(x) for x in cached["tags"]])
+    except Exception:
+        # Never fail tag UI due to cache issues
+        pass
 
-    # Steam already sorts by frequency on that page.
-    _cache_set(storage, key, {"tags": tags}, ttl_seconds=60 * 60 * 24)
-    return tags
+    # 2) Try live fetch
+    try:
+        html = _http_get_text(STEAM_TAG_BROWSE_URL, params={"cc": cc})
+        soup = BeautifulSoup(html, "html.parser")
+
+        tag_names: List[str] = []
+        for a in soup.select("a.tag_browse_tag"):
+            name = a.get_text(strip=True)
+            if name:
+                tag_names.append(name)
+
+        tags = _normalize_tags(tag_names)
+
+        # If Steam layout changed and we got nothing, treat as failure and go to fallback path
+        if not tags:
+            raise RuntimeError("Steam tag browse returned no tags (markup changed or blocked).")
+
+        # Save cache (24h)
+        try:
+            if storage is not None:
+                storage.set_json(cache_key, {"tags": [t["name"] for t in tags]}, ttl_seconds=24 * 60 * 60)
+        except Exception:
+            pass
+
+        return tags
+
+    except Exception:
+        # 3) Fallback to cached US tags if present (even if cc != US)
+        try:
+            if storage is not None:
+                cached_us = storage.get_json("steam_global_tags:US")
+                if isinstance(cached_us, dict) and isinstance(cached_us.get("tags"), list) and cached_us["tags"]:
+                    return _normalize_tags([str(x) for x in cached_us["tags"]])
+        except Exception:
+            pass
+
+        # 4) Final fallback: static list so dropdown is never empty
+        return _normalize_tags(FALLBACK_US_TAGS)
 
 
 # -----------------------------

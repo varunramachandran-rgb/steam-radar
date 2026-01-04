@@ -267,7 +267,7 @@ with st.sidebar:
 
     # --- Tags ---
     st.subheader("Steam Tag filters (OR match)")
-    cc_for_tags = countries[0] if countries else "US"
+    cc_for_tags = "US"
 
     # If tag fetch fails, we keep the UI usable and log exception
     try:
